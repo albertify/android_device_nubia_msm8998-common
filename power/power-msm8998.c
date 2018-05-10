@@ -194,11 +194,6 @@ static int process_video_encode_hint(void *metadata)
     return HINT_NONE;
 }
 
-enum SCHEDULER_MSM8998 {
-    SCHED_GROUP_UP_MIGRATE = 0x40C54000,
-    SCHED_GROUP_DOWN_MIGRATE = 0x40C58000,
-};
-
 int power_hint_override(__unused struct power_module *module,
         power_hint_t hint, void *data)
 {
