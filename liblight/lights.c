@@ -235,14 +235,15 @@ static int set_breathing_light_locked(
         write_int(LED_CHANNEL, LED_CHANNEL_HOME);
         write_int(LED_GRADE, 0);
         write_str(LED_FADE, "0 0 0");
-        write_int(LED_BLINK_MODE, 0);
+        write_int(LED_BLINK_MODE, BLINK_MODE_OFF);
+        return 0;
     }
 
     blink = onMS > 0 && offMS > 0;
 
     if (blink)
     {
-        if (event_source == BREATH_SOURCE_NOTIFICATION || event_source == BREATH_SOURCE_ATTENTION)
+        if ((event_source == BREATH_SOURCE_NOTIFICATION || event_source == BREATH_SOURCE_ATTENTION) & brightness > 0)
         {
             char buffer[25];
             switch (onMS)
@@ -312,14 +313,14 @@ static int set_breathing_light_locked(
     }
     else
     {
-        if (event_source == BREATH_SOURCE_BUTTONS)
+        if (event_source == BREATH_SOURCE_BUTTONS & brightness > 0)
         {
             write_int(LED_CHANNEL, LED_CHANNEL_HOME);
             write_int(LED_GRADE, LED_GRADE_BUTTON);
             write_str(LED_FADE, "1 0 0");
             write_int(LED_BLINK_MODE, BLINK_MODE_BREATH_ONCE);
         }
-        else if (event_source == BREATH_SOURCE_BATTERY)
+        else if (event_source == BREATH_SOURCE_BATTERY & brightness > 0)
         {
             int grade;
             int blink_mode;
