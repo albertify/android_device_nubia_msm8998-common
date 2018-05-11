@@ -205,11 +205,19 @@ static int set_breathing_light_locked(int event_source,
     break;
   }
 
-  ALOGV(
+  ALOGD(
       "set_breathing_light_locked mode %d, colorRGB=%08X, onMS=%d, offMS=%d\n",
       state->flashMode, state->color, onMS, offMS);
 
   brightness = rgb_to_brightness(state);
+  if (brightness <= 0) {
+    // Disable Home LED
+    write_int(LED_CHANNEL, LED_CHANNEL_HOME);
+    write_int(LED_GRADE, 0);
+    write_str(LED_FADE, "0 0 0");
+    write_int(LED_BLINK_MODE, 0);
+  }
+
   blink = onMS > 0 && offMS > 0;
 
   if (blink) {
@@ -217,105 +225,108 @@ static int set_breathing_light_locked(int event_source,
         event_source == BREATH_SOURCE_ATTENTION) {
       char buffer[25];
       switch (onMS) {
-      case 5000:
+      case 5000: // Very long
         onMS = 5;
         break;
-      case 2000:
+      case 2000: // Long
         onMS = 4;
         break;
-      case 1000:
+      case 1000: // Normal
         onMS = 3;
         break;
-      case 500:
+      case 500: // Fast
         onMS = 2;
         break;
-      case 250:
+      case 250: // Very fast
         onMS = 1;
         break;
+      case 1: // Always
+        onMS = 0;
+        break;
       default:
-        onMS = 1;
+        onMS = 0;
+        break;
       }
 
-      switch (offMS) {
-      case 5000:
-        offMS = 5;
-        break;
-      case 2000:
-        offMS = 4;
-        break;
-      case 1000:
-        offMS = 3;
-        break;
-      case 500:
-        offMS = 2;
-        break;
-      case 250:
-        offMS = 1;
-        break;
-      case 1:
-        offMS = 0;
-        break;
-      default:
+      // We can not keep the notification button is constantly
+      // illuminated. Therefore, disable it.
+      if (onMS != 0) { 
+        switch (offMS) {
+        case 5000: // Very slow
+          offMS = 5;
+          break;
+        case 2000: // Slow
+          offMS = 4;
+          break;
+        case 1000: // Normal
+          offMS = 3;
+          break;
+        case 500: // Fast
+          offMS = 2;
+          break;
+        case 250: // Very fast
+          offMS = 1;
+          break;
+        default:
+          offMS = 0;
+          break;
+        }
+      } else {
         offMS = 0;
       }
+
       snprintf(buffer, sizeof(buffer), "%d %d %d\n", offMS, onMS, onMS);
-      ALOGD("offMS=%d onMS=%d onMS=%d\n", offMS, onMS, onMS);
+      ALOGD("fade_time(offMS)=%d fullon_time(onMS)=%d fulloff_time(onMS)=%d\n",
+            offMS, onMS, onMS);
       write_int(LED_CHANNEL, LED_CHANNEL_HOME);
       write_int(LED_GRADE, LED_GRADE_HOME_NOTIFICATION);
-      write_int(LED_BLINK_MODE, BLINK_MODE_BREATH);
       write_str(LED_FADE, buffer);
+      write_int(LED_BLINK_MODE, BLINK_MODE_BREATH);
     }
   } else {
-    if (brightness <= 0) {
-      // Disable Home LED
+    if (event_source == BREATH_SOURCE_BUTTONS) {
       write_int(LED_CHANNEL, LED_CHANNEL_HOME);
-      write_int(LED_BLINK_MODE, BLINK_MODE_OFF);
+      write_int(LED_GRADE, LED_GRADE_BUTTON);
       write_str(LED_FADE, "1 0 0");
-    } else {
-      if (event_source == BREATH_SOURCE_BUTTONS) {
-        write_int(LED_CHANNEL, LED_CHANNEL_HOME);
-        write_int(LED_GRADE, LED_GRADE_BUTTON);
-        write_int(LED_BLINK_MODE, BLINK_MODE_BREATH);
-        write_str(LED_FADE, "1 0 0");
-        write_int(LED_BLINK_MODE, BLINK_MODE_BREATH_ONCE);
-      } else if (event_source == BREATH_SOURCE_BATTERY) {
-        int grade;
-        int blink_mode;
+      write_int(LED_BLINK_MODE, BLINK_MODE_BREATH_ONCE);
+    } else if (event_source == BREATH_SOURCE_BATTERY) {
+      int grade;
+      int blink_mode;
 
-        // can't get battery info from state, getting it from sysfs
-        int is_charging = 0;
-        int capacity = 0;
-        char charging_status[15];
-        FILE *fp = fopen(BATTERY_CHARGING_STATUS, "rb");
-        fgets(charging_status, 14, fp);
-        fclose(fp);
-        if (strstr(charging_status, "Charging") != NULL || 
-            strstr(charging_status, "Full") != NULL) {
-          is_charging = 1;
-        }
-        read_int(BATTERY_CAPACITY, &capacity);
-        if (is_charging == 0) {
-          // battery low
-          grade = LED_GRADE_HOME_BATTERY_LOW;
+      // can't get battery info from state, getting it from sysfs
+      int is_charging = 0;
+      int capacity = 0;
+      char charging_status[15];
+      FILE *fp = fopen(BATTERY_CHARGING_STATUS, "rb");
+      fgets(charging_status, 14, fp);
+      fclose(fp);
+      if (strstr(charging_status, "Charging") != NULL ||
+          strstr(charging_status, "Full") != NULL) {
+        is_charging = 1;
+      }
+      read_int(BATTERY_CAPACITY, &capacity);
+      if (is_charging == 0) {
+        // battery low
+        grade = LED_GRADE_HOME_BATTERY_LOW;
+        blink_mode = BLINK_MODE_BREATH;
+      } else {
+        grade = LED_GRADE_HOME_BATTERY;
+        if (capacity < 90) {
+          // battery chagring
           blink_mode = BLINK_MODE_BREATH;
         } else {
-          grade = LED_GRADE_HOME_BATTERY;
-          if (capacity < 90) {
-            // battery chagring
-            blink_mode = BLINK_MODE_BREATH;
-          } else {
-            // battery full
-            blink_mode = BLINK_MODE_BREATH_ONCE;
-          }
+          // battery full
+          blink_mode = BLINK_MODE_BREATH_ONCE;
         }
-
-        write_int(LED_CHANNEL, LED_CHANNEL_HOME);
-        write_int(LED_GRADE, grade);
-        write_int(LED_BLINK_MODE, blink_mode);
       }
+      write_int(LED_CHANNEL, LED_CHANNEL_HOME);
+      write_int(LED_GRADE, grade);
+      write_str(LED_FADE, "3 0 4");
+      write_int(LED_BLINK_MODE, blink_mode);
     }
   }
-  return 0;
+}
+return 0;
 }
 
 static void handle_breathing_light_locked(struct light_device_t *dev) {
@@ -353,6 +364,7 @@ static int set_light_buttons(struct light_device_t *dev,
     if (initialized == 0) {
       // Kill buttons
       write_int(LED_CHANNEL, LED_CHANNEL_BUTTON);
+      write_str(LED_FADE, "0 0 0");
       write_int(LED_BLINK_MODE,
                 BLINK_MODE_BREATH); // Disable all buttons keys (?)
       write_int(LED_BRIGHTNESS, 0); // Disable left key
@@ -493,4 +505,3 @@ struct hw_module_t HAL_MODULE_INFO_SYM = {
     .author = "The LineageOS Project, BeYkeRYkt",
     .methods = &lights_module_methods,
 };
-
